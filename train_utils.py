@@ -72,15 +72,17 @@ def train_icm(experts, expert_opt, discriminator, discriminator_opt, data, args)
         data (DataLoader): pytorch dataloader for the training data
         args : argparse object
     """
-    loss = torch.nn.BCELoss(reduction="mean")
+    loss = torch.nn.BCEWithLogitsLoss(reduction="mean")
     discriminator.train()
     _ = [e.train() for e in experts]
-    # torch.autograd.set_detect_anomaly(True)
+    torch.autograd.set_detect_anomaly(True)
 
     for idx, batch in enumerate(data):
         x_src, x_tgt = batch
 
         # D expert pass
+        discriminator_opt.zero_grad()
+
         exp_out, exp_score = [], []
         loss_exp_d = 0
         labels = torch.full((args.batch_size,), 0.0, device=args.device).unsqueeze(dim=1)
@@ -89,17 +91,17 @@ def train_icm(experts, expert_opt, discriminator, discriminator_opt, data, args)
             score = discriminator(out.detach())
             exp_out.append(out)
             exp_score.append(score)
-            loss_exp_d += loss(score, labels.detach())
+            loss_exp_d += loss(score, labels)
         loss_exp_d /= len(experts)
+        # loss_exp_d.backward()
 
         # D discriminator pass
         score = discriminator(x_src)
         # labels.fill_(1)
         labels = torch.full((args.batch_size,), 1.0, device=args.device).unsqueeze(dim=1)
-        total_loss = loss_exp_d + loss(score, labels.detach())
+        total_loss = loss(score, labels.detach()) + loss_exp_d
 
         # combined and back pass for discriminator
-        discriminator_opt.zero_grad()
         total_loss.backward()
         discriminator_opt.step()
 
@@ -116,13 +118,15 @@ def train_icm(experts, expert_opt, discriminator, discriminator_opt, data, args)
             n_samples = selected_idx.size(0)
             per_expert_winning_num.append(n_samples)
             if n_samples > 0:
-                samples = exp_out[selected_idx, i]
+                expert_opt[i].zero_grad()
+                # samples = exp_out[selected_idx, i]
+                samples = e(x_tgt[selected_idx])
                 score = discriminator(samples)
                 labels = torch.full((n_samples,), 1.0, device=args.device)
                 labels = labels.unsqueeze(dim=1)
                 loss_exp = loss(score, labels)
                 loss_exp.backward(retain_graph=True)
-                expert_opt[i].zero_grad()
+                expert_opt[i].step()
 
         if idx % 100 == 0:
             print("Discriminator expert Loss: {:.4f}".format(loss_exp_d))
@@ -180,6 +184,7 @@ def train_gan(experts, expert_opt, discriminator, discriminator_opt, data, args)
         expert_opt.step()
 
         if idx % args.print_iterval == 0:
+            print('Iteration {}'.format(idx))
             print("Discriminator fake Loss: {:.4f}".format(d_loss_fake))
             print("Discriminator real Loss: {:.4f}".format(d_loss_real))
             print("Generator Loss: {:.4f} \n".format(gen_loss))

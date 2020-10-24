@@ -5,17 +5,18 @@ import torch
 from torch.utils.data import TensorDataset, DataLoader
 
 
-def translated_gaussian(num_sample=1000, num_mechanism=4, scale=0.05):
+def translated_gaussian(num_sample=1000, num_mechanism=4, scale=0.05, dist=1.0):
     mean = [0, 0]
     cov = np.array([[1, 0], [0, 1]]) * scale
     source_data = np.random.multivariate_normal(mean, cov, num_sample)
-    mechanism = np.array([[0, 1], [1, 0], [-1, 0], [0, -1]])
+    mechanism = np.array([[0, 1], [1, 0], [-1, 0], [0, -1]]) * dist
     target_data = np.concatenate([m + source_data for m in mechanism])
+    np.random.shuffle(target_data)
     return source_data, target_data
 
 
-def translated_gaussian_dataset(batch_size, args, num_sample=1000):
-    src, tgt = translated_gaussian(num_sample)
+def translated_gaussian_dataset(batch_size, args, dist=1.0, num_sample=1000):
+    src, tgt = translated_gaussian(num_sample, scale=args.noise_scale, dist=dist)
 
     np.random.shuffle(src)
     np.random.shuffle(tgt)
