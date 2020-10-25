@@ -88,6 +88,7 @@ def train_icm(experts, expert_opt, discriminator, discriminator_opt, data, args)
         labels = torch.full((args.batch_size,), 0.0, device=args.device).unsqueeze(dim=1)
         for e in experts:
             out = e(x_tgt)
+            # print(out.size())
             score = discriminator(out.detach())
             exp_out.append(out)
             exp_score.append(score)
