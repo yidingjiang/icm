@@ -20,6 +20,7 @@ def translated_gaussian_dataset(batch_size, args, dist=1.0, num_sample=1000):
 
     np.random.shuffle(src)
     np.random.shuffle(tgt)
+
     tensor_src = torch.Tensor(src)
     tensor_tgt = torch.Tensor(tgt[:num_sample])
 
@@ -43,6 +44,38 @@ def single_translated_gaussian_dataset(batch_size, args, scale=1.0, num_sample=1
 
     tensor_src = torch.Tensor(src)
     tensor_tgt = torch.Tensor(tgt)
+
+    dataset = TensorDataset(tensor_src, tensor_tgt)
+    dataloader = DataLoader(
+        dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=int(args.cuda),
+        pin_memory=args.cuda,
+        drop_last=True,
+    )
+    return dataloader
+
+
+def transformed_mnist_dataset(batch_size, args):
+    source_data = np.load("./mnist_original_data.npy", allow_pickle=True)
+    target_data = np.load("./mnist_transformed_data.npy", allow_pickle=True)
+
+    source_data = np.transpose(source_data, [0, 3, 1, 2])
+    target_data = np.transpose(target_data, [0, 3, 1, 2])
+
+    np.random.shuffle(source_data)
+    np.random.shuffle(target_data)
+
+    target_size = target_data.shape[0]
+    source_size = source_data.shape[0]
+    multiple = target_size // (source_size * 2)
+    source_data = np.concatenate([source_data] * multiple, axis=0)
+    target_data = target_data[: source_size * multiple]
+
+    tensor_src = torch.Tensor(source_data)
+    tensor_tgt = torch.Tensor(target_data)
+    print(tensor_src.size(), tensor_tgt.size())
 
     dataset = TensorDataset(tensor_src, tensor_tgt)
     dataloader = DataLoader(

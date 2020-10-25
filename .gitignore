@@ -2,3 +2,6 @@
 .ipynb*
 *.ipynb
 __pycache__
+datasets
+MNIST
+*.npy
