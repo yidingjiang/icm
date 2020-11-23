@@ -77,4 +77,4 @@ if __name__ == "__main__":
 
     for n in range(args.num_epoch):
         train_icm(experts, expert_opt, discriminator, discriminator_opt, data, args)
-        print([e(torch.Tensor(np.array([[0., 0.]]))) for e in experts])
+        print([e(torch.Tensor(np.array([[0.0, 0.0]]))) for e in experts])

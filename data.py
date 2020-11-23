@@ -58,8 +58,16 @@ def single_translated_gaussian_dataset(batch_size, args, scale=1.0, num_sample=1
 
 
 def transformed_mnist_dataset(batch_size, args):
-    source_data = np.load("./mnist_original_data.npy", allow_pickle=True)
-    target_data = np.load("./mnist_transformed_data.npy", allow_pickle=True)
+    num_transform = args.num_transform
+
+    original_data_name = "mnist_original_data"
+    transformed_data_name = "mnist_transformed_data"
+    if num_transform > 1:
+        original_data_name += "_{}_transform".format(num_transform)
+        transformed_data_name += "_{}_transform".format(num_transform)
+ 
+    source_data = np.load("./" + original_data_name + '.npy', allow_pickle=True)
+    target_data = np.load("./" + transformed_data_name + '.npy', allow_pickle=True)
 
     source_data = np.transpose(source_data, [0, 3, 1, 2])
     target_data = np.transpose(target_data, [0, 3, 1, 2])

@@ -6,7 +6,7 @@ import torchvision
 import numpy as np
 
 
-def generated_transformed_mnist(save_path):
+def generated_transformed_mnist(save_path, num_transform=1, add_rotation=False):
     train_loader = torch.utils.data.DataLoader(
         torchvision.datasets.MNIST(
             root="./",
@@ -24,15 +24,25 @@ def generated_transformed_mnist(save_path):
         data.append(np.transpose(x.numpy(), (0, 2, 3, 1)))
     dataset = np.concatenate(data, axis=0)
     candidates = [shift_right, shift_left, shift_up, shift_down, noise]
+    if add_rotation:
+        candidates.append(rotate)
     target_dataset = []
     for img in dataset:
         for _ in range(3):
-            t = np.random.choice(candidates, 1)[0]
-            target_dataset.append(t(img))
+            ts = np.random.choice(candidates, num_transform, replace=False)
+            img_t = img.copy()
+            for t in ts:
+                img_t = t(img_t)
+            target_dataset.append(img_t)
     target_dataset = np.array(target_dataset)
 
-    np.save(os.path.join(save_path, "mnist_original_data"), dataset)
-    np.save(os.path.join(save_path, "mnist_transformed_data"), target_dataset)
+    original_data_name = "mnist_original_data"
+    transformed_data_name = "mnist_transformed_data"
+    if num_transform > 1:
+        original_data_name += "_{}_transform".format(num_transform)
+        transformed_data_name += "_{}_transform".format(num_transform)
+    np.save(os.path.join(save_path, original_data_name), dataset)
+    np.save(os.path.join(save_path, transformed_data_name), target_dataset)
 
 
 def shift(image, direction):
@@ -73,3 +83,48 @@ def noise(image):
     image += added_noise
     clipped = np.clip(image, 0.0, scale)
     return clipped
+
+
+def rotate(image):
+    image = image.copy()
+    return np.transpose(image, [1, 0, 2])
+
+
+# ========================================================================
+
+
+def generate_supervised_training_data(args, experts, image_per_expert=10000):
+    def get_loader(train=True):
+        return torch.utils.data.DataLoader(
+            torchvision.datasets.MNIST(
+                root="./",
+                train=train,
+                download=True,
+                transform=torchvision.transforms.Compose(
+                    [torchvision.transforms.ToTensor()]
+                ),
+            ),
+            batch_size=64,
+            shuffle=True,
+            drop_last=True,
+        )
+
+    train_loader = get_loader()
+    num_batch = image_per_expert // 64
+    train_data, train_label = [], []
+    for t in experts:
+        for _ in num_batch:
+            try:
+                x, y = next(train_loader)
+            except StopIteration:
+                train_loader = get_loader()
+                x, y = next(train_loader)
+            x = x.to(args.device)
+            x_t = t(x)
+            train_data.append(np.transpose(x_t.cpu().numpy(), (0, 2, 3, 1)))
+            train_label.append(y.cpu().numpy())
+
+    train_data = np.concatenate(train_data, axis=0)
+    
+    
+            

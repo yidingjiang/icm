@@ -79,6 +79,10 @@ def train_icm(experts, expert_opt, discriminator, discriminator_opt, data, args)
 
     for idx, batch in enumerate(data):
         x_src, x_tgt = batch
+        x_src, x_tgt = x_src.to(args.device), x_tgt.to(args.device)
+
+        if args.no_source_target:
+            x_src = x_tgt
 
         # D expert pass
         discriminator_opt.zero_grad()
