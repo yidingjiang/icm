@@ -6,7 +6,9 @@ import torchvision
 import numpy as np
 
 
-def generated_transformed_mnist(save_path, num_transform=1, add_rotation=False):
+def generated_transformed_mnist(
+    save_path, num_transform=1, num_copy_per_image=1, add_rotation=False
+):
     train_loader = torch.utils.data.DataLoader(
         torchvision.datasets.MNIST(
             root="./",
@@ -19,22 +21,27 @@ def generated_transformed_mnist(save_path, num_transform=1, add_rotation=False):
         batch_size=64,
         shuffle=True,
     )
-    data = []
+    data, label = [], []
     for x, y in train_loader:
         data.append(np.transpose(x.numpy(), (0, 2, 3, 1)))
+        label.append(y.numpy())
     dataset = np.concatenate(data, axis=0)
+    label = np.concatenate(label, axis=0)
+
+    # Transforming data
     candidates = [shift_right, shift_left, shift_up, shift_down, noise]
     if add_rotation:
         candidates.append(rotate)
-    target_dataset = []
-    for img in dataset:
-        for _ in range(3):
+    target_dataset, target_label = [], []
+    for img, y in zip(dataset, label):
+        for _ in range(num_copy_per_image):
             ts = np.random.choice(candidates, num_transform, replace=False)
             img_t = img.copy()
             for t in ts:
                 img_t = t(img_t)
             target_dataset.append(img_t)
-    target_dataset = np.array(target_dataset)
+            target_label.append(y)
+    target_dataset, target_label = np.array(target_dataset), np.array(target_label)
 
     original_data_name = "mnist_original_data"
     transformed_data_name = "mnist_transformed_data"
@@ -43,6 +50,8 @@ def generated_transformed_mnist(save_path, num_transform=1, add_rotation=False):
         transformed_data_name += "_{}_transform".format(num_transform)
     np.save(os.path.join(save_path, original_data_name), dataset)
     np.save(os.path.join(save_path, transformed_data_name), target_dataset)
+    np.save(os.path.join(save_path, original_data_name + "_label"), label)
+    np.save(os.path.join(save_path, transformed_data_name + "_label"), target_label)
 
 
 def shift(image, direction):
@@ -109,6 +118,7 @@ def generate_supervised_training_data(args, experts, image_per_expert=10000):
             drop_last=True,
         )
 
+    # ===================== Expert =====================
     train_loader = get_loader()
     num_batch = image_per_expert // 64
     train_data, train_label = [], []
@@ -123,8 +133,30 @@ def generate_supervised_training_data(args, experts, image_per_expert=10000):
             x_t = t(x)
             train_data.append(np.transpose(x_t.cpu().numpy(), (0, 2, 3, 1)))
             train_label.append(y.cpu().numpy())
-
     train_data = np.concatenate(train_data, axis=0)
-    
-    
-            
+    train_label = np.array(train_label)
+
+    # ===================== Oracle =====================
+    oracle_train_data, oracle_train_label = [], []
+
+    for x, y in get_loader():
+        oracle_train_data.append(np.transpose(x.numpy(), (0, 2, 3, 1)))
+        oracle_train_label.append(y)
+
+    candidates = [shift_right, shift_left, shift_up, shift_down, noise]
+    transformed_oracle_train_data = []
+    for img in oracle_train_data:
+        ts = np.random.choice(candidates, 1, replace=False)
+        img_t = img.copy()
+        for t in ts:
+            img_t = t(img_t)
+        transformed_oracle_train_data.append(img_t)
+
+    oracle_train_data = np.array(oracle_train_data)
+    oracle_train_label = np.array(oracle_train_label)
+
+    # ===================== Saving =====================
+    original_data_name = "mnist_expert_transformed_data"
+    transformed_data_name = "mnist_transformed_data"
+    np.save(os.path.join(save_path, original_data_name), dataset)
+    np.save(os.path.join(save_path, transformed_data_name), target_dataset)

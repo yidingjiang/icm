@@ -1,6 +1,7 @@
 .vscode
 .ipynb*
-*.ipynb
+minist.ipynb
+interactive_vis.ipynb
 __pycache__
 datasets
 MNIST

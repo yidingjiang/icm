@@ -15,44 +15,26 @@ from train_utils import train_icm
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="ICM experiment configuration")
     parser.add_argument(
-        "--num_experts",
-        type=int,
-        default=8,
-        help="number of experts (default: 5)",
+        "--num_experts", type=int, default=8, help="number of experts (default: 5)"
+    )
+    parser.add_argument("--input_shape", default=2, help="Size of the input shape")
+    parser.add_argument(
+        "--d_output_size", type=int, default=1, help="Size of the discriminator output"
     )
     parser.add_argument(
-        "--input_shape",
-        default=2,
-        help="Size of the input shape",
+        "--num_epoch", type=int, default=20, help="number of icm training epoch"
     )
     parser.add_argument(
-        "--discriminator_output_size",
-        default=1,
-        help="Size of the discriminator output",
-    )
-    parser.add_argument(
-        "--num_epoch",
-        type=int,
-        default=20,
-        help="number of icm training epoch (default: 20)",
-    )
-    parser.add_argument(
-        "--min_initialization_loss",
+        "--min_init_loss",
         type=float,
         default=0.01,
-        help="Minimum loss before initialization is terminated",
+        help="Minimum loss for initialization"
     )
     parser.add_argument(
-        "--num_initialize_epoch",
-        type=int,
-        default=10,
-        help="Number of epochs the data is passed over",
+        "--num_initialize_epoch", type=int, default=10, help="Number of epochs at init"
     )
     parser.add_argument(
-        "--batch_size",
-        type=int,
-        default=32,
-        help="Size of the minibatch",
+        "--batch_size", type=int, default=32, help="Size of the minibatch"
     )
 
     args = parser.parse_args()
