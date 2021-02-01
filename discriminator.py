@@ -39,23 +39,24 @@ class ConvolutionDiscriminator(Discriminator):
     """Convolutional discriminator."""
 
     def build(self):
+        w = self.config.width_multiplier
         conv_layer = SNConv2d if self.config.use_sn else nn.Conv2d
         layers = [
-            conv_layer(self.config.input_shape[-1], 16, 3, 2, padding=1),
+            conv_layer(self.config.input_shape[-1], 16*w, 3, 2, padding=1),
             nn.LeakyReLU(),
-            conv_layer(16, 16, 3, 1, padding=1),
+            conv_layer(16*w, 16*w, 3, 1, padding=1),
             nn.LeakyReLU(),
-            conv_layer(16, 16, 3, 1, padding=1),
+            conv_layer(16*w, 16*w, 3, 1, padding=1),
             nn.LeakyReLU(),
-            conv_layer(16, 32, 3, 2, padding=1),
+            conv_layer(16*w, 32*w, 3, 2, padding=1),
             nn.LeakyReLU(),
-            conv_layer(32, 32, 3, 1, padding=1),
+            conv_layer(32*w, 32*w, 3, 1, padding=1),
             nn.LeakyReLU(),
-            nn.Conv2d(32, 64, 3, 1, padding=1),
+            nn.Conv2d(32*w, 64*w, 3, 1, padding=1),
             nn.LeakyReLU(),
             nn.AvgPool2d(self.config.input_shape[0]//4),
             nn.Flatten(),
-            SNLinear(64, 100),
+            SNLinear(64*w, 100),
             nn.ReLU(),
             SNLinear(100, 1),
         ]

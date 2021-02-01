@@ -49,16 +49,16 @@ def initialize_single_expert(expert, optimizer, data, loss, index, args):
             optimizer.zero_grad()
             l2_diff.backward()
             optimizer.step()
-        # Loss
-        mean_loss = total_loss / n_batch
-        print(
-            "initialization: expert {} epoch {} loss {:.4f}".format(
-                index, epoch + 1, mean_loss
-            )
-        )
-        if mean_loss < args.min_initialization_loss:
-            print("--------------")
-            break
+            # Loss
+            mean_loss = total_loss / n_batch
+            if mean_loss < args.min_initialization_loss:
+                print(
+                    "initialization: expert {} epoch {} loss {:.4f}".format(
+                        index, epoch + 1, mean_loss
+                    )
+                )
+                print("------------below threshold----------")
+                return
 
 
 def train_icm(experts, expert_opt, discriminator, discriminator_opt, data, args):

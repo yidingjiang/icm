@@ -60,15 +60,16 @@ class ConvolutionExpert(Expert):
     """Expert for images."""
 
     def build(self):
+        w = self.config.width_multiplier
         conv_layer = SNConv2d if self.config.use_sn else nn.Conv2d
         layers = [
-            conv_layer(self.config.input_shape[-1], 16, 3, 1, padding=1),
+            conv_layer(self.config.input_shape[-1], 16*w, 3, 1, padding=1),
             nn.ReLU(),
-            conv_layer(16, 32, 3, 1, padding=1),
+            conv_layer(16*w, 32*w, 3, 1, padding=1),
             nn.ReLU(),
-            conv_layer(32, 16, 3, 1, padding=1),
+            conv_layer(32*w, 16*w, 3, 1, padding=1),
             nn.ReLU(),
-            nn.Conv2d(16, 1, 1, 1, padding=0),
+            nn.Conv2d(16*w, self.config.input_shape[-1], 1, 1, padding=0),
             nn.Sigmoid(),
         ]
         return nn.Sequential(*layers)
