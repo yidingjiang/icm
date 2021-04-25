@@ -63,3 +63,39 @@ class ConvolutionDiscriminator(Discriminator):
         if self.config.discriminator_sigmoid:
             layers.append(nn.Sigmoid())
         return nn.Sequential(*layers)
+
+
+class MechanismConvolutionDiscriminator(nn.Module):
+
+    def __init__(self, args):
+        super(MechanismConvolutionDiscriminator, self).__init__()
+        self.config = args
+        self.model = self.build()
+
+    def forward(self, input):
+        out = self.model(input)
+        return out
+
+    def build(self):
+        w = self.config.width_multiplier
+        conv_layer = SNConv2d if self.config.use_sn else nn.Conv2d
+        layers = [
+            conv_layer(self.config.input_shape[-1], 16*w, 3, 2, padding=1),
+            nn.LeakyReLU(),
+            conv_layer(16*w, 16*w, 3, 1, padding=1),
+            nn.LeakyReLU(),
+            conv_layer(16*w, 16*w, 3, 1, padding=1),
+            nn.LeakyReLU(),
+            conv_layer(16*w, 32*w, 3, 2, padding=1),
+            nn.LeakyReLU(),
+            conv_layer(32*w, 32*w, 3, 1, padding=1),
+            nn.LeakyReLU(),
+            nn.Conv2d(32*w, 64*w, 3, 1, padding=1),
+            nn.LeakyReLU(),
+            nn.AvgPool2d(self.config.input_shape[0]//4),
+            nn.Flatten(),
+            SNLinear(64*w, 100),
+            nn.ReLU(),
+            SNLinear(100, self.args.num_experts),
+        ]
+        return nn.Sequential(*layers)
