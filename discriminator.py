@@ -80,7 +80,7 @@ class MechanismConvolutionDiscriminator(nn.Module):
         w = self.config.width_multiplier
         conv_layer = SNConv2d if self.config.use_sn else nn.Conv2d
         layers = [
-            conv_layer(self.config.input_shape[-1], 16*w, 3, 2, padding=1),
+            conv_layer(self.config.input_shape[-1]*2, 16*w, 3, 2, padding=1),
             nn.LeakyReLU(),
             conv_layer(16*w, 16*w, 3, 1, padding=1),
             nn.LeakyReLU(),
@@ -96,6 +96,6 @@ class MechanismConvolutionDiscriminator(nn.Module):
             nn.Flatten(),
             SNLinear(64*w, 100),
             nn.ReLU(),
-            SNLinear(100, self.args.num_experts),
+            SNLinear(100, self.config.num_experts),
         ]
         return nn.Sequential(*layers)

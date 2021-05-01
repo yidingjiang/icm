@@ -14,7 +14,7 @@ class SequenceICM:
         self.d_data = discriminator_data
         self.d_mech = discriminator_mechanisms
         self.data_loss_fn = nn.BCEWithLogitsLoss(reduction="mean")
-        self.mech_loss_fn = nn.CrossEntropyLoss
+        self.mech_loss_fn = nn.CrossEntropyLoss()
         all_mech_params = []
         for m in self.mechs:
             all_mech_params += list(m.parameters())
@@ -23,7 +23,7 @@ class SequenceICM:
         )
         self.d_opt = torch.optim.Adam(self.d_mech.parameters())
 
-        self.bs = args.batchsize
+        self.bs = args.batch_size
         self.n_mech = len(self.mechs)
         if self.bs % self.n_mech != 0:
             raise ValueError(
@@ -31,57 +31,76 @@ class SequenceICM:
             )
         self.device = args.device
 
-    def train(self, data):
+    def train(self, data, verbose=False):
         # set up training mode
         self.d_data.train()
         self.d_mech.train()
         for m in self.mechs:
             m.train()
         # spliting training batch into half
-        data_mech, data_disc = data[: self.bs // 2], data[self.bs // 2 :]
+        data = data.to(self.device)
+        data_mech, data_disc = data[: self.bs], data[self.bs:]
         ##################
         # train mechanisms and mechanism discriminators
         ##################
-        data_mech_split = torch.split(data_mech, self.n_mech)
+        if verbose:
+            print('data_mech', data_mech.shape)
+        data_mech_split = torch.split(data_mech, self.bs //self.n_mech)
         mech_out = []
         for m, d in zip(self.mechs, data_mech_split):
+            if verbose:
+                print(d.shape)
             mech_out.append(m(d))
         # compute loss for distribution matching
         mech_out_combined = torch.cat(mech_out, dim=0)
-        d_data_scores = self.d_data(mech_out)
-        data_target = torch.full((self.bs,), 1.0, device=self.device)
+        if verbose:
+            print('mech_out_combined', mech_out_combined.shape)
+        d_data_scores = self.d_data(mech_out_combined)
+        data_target = torch.full((self.bs,), 1.0, device=self.device).unsqueeze(dim=1)
+        if verbose:
+            print('d_data_scores', d_data_scores.shape)
+            print('data_target', data_target.shape)
         data_loss = self.data_loss_fn(d_data_scores, data_target)
         # compute loss for identifiability
+        if verbose:
+            print('data', data.shape)
+            print('data_mech', data_mech.shape)
+            print('mech_out_combined', mech_out_combined.shape)
+#         data_pairs = torch.cat(
+#             (torch.unsqueeze(data_mech, dim=1), torch.unsqueeze(mech_out_combined, dim=1)),
+#             dim=1,
+#         )
         data_pairs = torch.cat(
-            (torch.unsqueeze(data, dim=1), torch.unsqueeze(mech_out_combined, dim=1)),
+            (data_mech, mech_out_combined),
             dim=1,
         )
-        # data_pairs = torch.cat(
-        #     (data, mech_out_combined),
-        #     dim=1,
-        # )
         d_mech_logits = self.d_mech(data_pairs)
         d_mech_label = torch.arange(0, self.n_mech, device=self.device)
         d_mech_label = d_mech_label.repeat_interleave(self.bs // self.n_mech)
+        if verbose:
+            print('d_mech_label', d_mech_label.shape)
+            print(d_mech_label)
+            print('d_mech_logits', d_mech_logits.shape)
         mech_loss = self.mech_loss_fn(d_mech_logits, d_mech_label)
         # backwards for mechanisms
-        total_loss = data_loss + mech_loss
+#         total_loss = data_loss + 2.0 * mech_loss
+        total_loss = data_loss
         total_loss.backward()
         self.mech_opt.step()
 
         ##################
         # train data discriminator
         ##################
-        data_disc = torch.split(data_disc, self.n_mech)
+        data_disc = torch.split(data_disc, self.bs // self.n_mech)
         mech_out = []
         for m, d in zip(self.mechs, data_disc):
             mech_out.append(m(d))
         # compute loss for distribution matching
         mech_out_combined = torch.cat(mech_out, dim=0)
-        fake_scores = self.d_data(mech_out)
+        fake_scores = self.d_data(mech_out_combined)
         real_scores = self.d_data(data_mech)
-        real_target = torch.full((self.bs,), 1.0, device=self.device)
-        fake_target = torch.full((self.bs,), 0.0, device=self.device)
+        real_target = torch.full((self.bs,), 1.0, device=self.device).unsqueeze(dim=1)
+        fake_target = torch.full((self.bs,), 0.0, device=self.device).unsqueeze(dim=1)
         real_loss = self.data_loss_fn(real_scores, real_target.detach())
         fake_loss = self.data_loss_fn(fake_scores, fake_target.detach())
         total_loss = real_loss + fake_loss

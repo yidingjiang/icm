@@ -11,9 +11,9 @@ def generated_transformed_mnist(
 ):
     train_loader = torch.utils.data.DataLoader(
         torchvision.datasets.MNIST(
-            root="./",
+            root="./datasets",
             train=True,
-            download=True,
+            download=False,
             transform=torchvision.transforms.Compose(
                 [torchvision.transforms.ToTensor()]
             ),
