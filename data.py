@@ -95,3 +95,54 @@ def transformed_mnist_dataset(batch_size, args):
         drop_last=True,
     )
     return dataloader
+
+
+def transformed_mnist_dataset_separate(batch_size, args):
+    num_transform = args.num_transform
+
+    original_data_name = "mnist_original_data"
+    transformed_data_name = "mnist_transformed_data"
+    if num_transform > 1:
+        original_data_name += "_{}_transform".format(num_transform)
+        transformed_data_name += "_{}_transform".format(num_transform)
+ 
+    source_data = np.load("./datasets/" + original_data_name + '.npy', allow_pickle=True)
+    target_data = np.load("./datasets/" + transformed_data_name + '.npy', allow_pickle=True)
+
+    source_data = np.transpose(source_data, [0, 3, 1, 2])
+    target_data = np.transpose(target_data, [0, 3, 1, 2])
+
+    np.random.shuffle(source_data)
+    np.random.shuffle(target_data)
+
+    target_size = target_data.shape[0]
+    source_size = source_data.shape[0]
+    print('transformed data number: {}'.format(target_size))
+    print('original data number: {}'.format(source_size))
+    multiple = target_size // (source_size * 2)
+    print('multiple:', multiple)
+
+    tensor_src = torch.Tensor(source_data)
+    tensor_tgt = torch.Tensor(target_data)
+    print(tensor_src.size(), tensor_tgt.size())
+
+    dataset = TensorDataset(tensor_src)
+    src_dataloader = DataLoader(
+        dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=int(args.cuda),
+        pin_memory=args.cuda,
+        drop_last=True,
+    )
+
+    dataset = TensorDataset(tensor_tgt)
+    tgt_dataloader = DataLoader(
+        dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=int(args.cuda),
+        pin_memory=args.cuda,
+        drop_last=True,
+    )
+    return src_dataloader, tgt_dataloader

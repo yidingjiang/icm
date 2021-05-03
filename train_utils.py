@@ -41,9 +41,71 @@ def initialize_single_expert(expert, optimizer, data, loss, index, args):
         n_batch = 0
         for batch in data:
             n_batch += 1
-            _, x = batch
+            x = batch
+            if isinstance(x, tuple):
+                x = x[1]
             x = x.to(args.device)
             x_hat = expert(x)
+            l2_diff = loss(x_hat, x)
+            total_loss += l2_diff.item()
+            optimizer.zero_grad()
+            l2_diff.backward()
+            optimizer.step()
+        # Loss
+        mean_loss = total_loss / n_batch
+        print(
+            "initialization: expert {} epoch {} loss {:.4f}".format(
+                index, epoch + 1, mean_loss
+            )
+        )
+        if mean_loss < args.min_initialization_loss:
+            print("--------------")
+            break
+
+
+def initialize_experts_mixing(experts, data, args):
+    """Function for initialize a list of experts.
+
+    Args:
+        experts (list): a list of all expert
+        optimizers (list): a list of optimizer for each expert
+        data (DataLoader): data loader for all the training data
+        args : argparse object
+    """
+    print("======Initializing experts to identity on target data===\n")
+    loss = torch.nn.MSELoss(reduction="mean")
+    optimizers = []
+    for e in experts:
+        optimizers.append(torch.optim.Adam(e.parameters()))
+    for i, e, o in zip(np.arange(len(experts)), experts, optimizers):
+        initialize_single_expert_mixing(e, o, data, loss, i, args)
+    print("\n======Finished initializing experts===\n")
+
+
+def initialize_single_expert_mixing(expert, optimizer, data, loss, index, args):
+    """Initialize a single object.
+
+    Args:
+        expert (Expert): a single expert
+        optimizer : Pytorch optimizer for the expert
+        data (DataLoader): data loader for the training data
+        loss : type of loss function used for training the initialization
+        index (int): unique index for the current expert
+        args : argparse object
+    """
+    expert.train()
+    for epoch in range(args.num_initialize_epoch):
+        total_loss = 0
+        n_batch = 0
+        for batch in data:
+            n_batch += 1
+            x = batch
+            if isinstance(x, tuple):
+                x = x[1]
+            x = x.to(args.device)
+            x_hat = expert(x)
+            shuffle_idx = torch.randperm(x.shape[0])
+            x = x[shuffle_idx]
             l2_diff = loss(x_hat, x)
             total_loss += l2_diff.item()
             optimizer.zero_grad()
