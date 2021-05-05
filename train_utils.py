@@ -123,6 +123,78 @@ def initialize_single_expert_mixing(expert, optimizer, data, loss, index, args):
             break
 
 
+def initialize_experts_mixup(experts, data, args):
+    """Function for initialize a list of experts.
+
+    Args:
+        experts (list): a list of all expert
+        optimizers (list): a list of optimizer for each expert
+        data (DataLoader): data loader for all the training data
+        args : argparse object
+    """
+    print("======Initializing experts to identity on target data===\n")
+    cluster_center = np.load("datasets/k_mean_center_20.npy").reshape((20, 1, 28, 28))
+    if len(experts) > len(cluster_center):
+        cluster_center = np.concatenate(
+            (cluster_center, cluster_center[: len(experts) - len(cluster_center)]),
+            axis=0,
+        )
+    if len(experts) < len(cluster_center):
+        cluster_center = cluster_center[: len(experts)]
+    loss = torch.nn.MSELoss(reduction="mean")
+    optimizers = []
+    for e in experts:
+        optimizers.append(torch.optim.Adam(e.parameters()))
+    for i, e, o, c in zip(np.arange(len(experts)), experts, optimizers, cluster_center):
+        initialize_single_expert_mixup(e, o, c, data, loss, i, args)
+    print("\n======Finished initializing experts===\n")
+
+
+def initialize_single_expert_mixup(expert, optimizer, center, data, loss, index, args):
+    """Initialize a single object.
+
+    Args:
+        expert (Expert): a single expert
+        optimizer : Pytorch optimizer for the expert
+        data (DataLoader): data loader for the training data
+        loss : type of loss function used for training the initialization
+        index (int): unique index for the current expert
+        args : argparse object
+    """
+    expert.train()
+    center = torch.from_numpy(np.stack([[center] * args.batch_size*2])).float().to(args.device)
+    center = center[0]
+    for epoch in range(args.num_initialize_epoch):
+        total_loss = 0
+        n_batch = 0
+        for batch in data:
+            n_batch += 1
+            x = batch
+            if isinstance(x, tuple):
+                x = x[1]
+            x = x.to(args.device)
+            x_hat = expert(x)
+            portion = torch.from_numpy(np.random.beta(1, 20, size=len(batch))).float().to(args.device)
+            portion = portion.unsqueeze(1).unsqueeze(1).unsqueeze(1)
+            # print(portion.shape, center.shape, x.shape)
+            target = (1.0 - portion) * center + portion * x
+            l2_diff = loss(x_hat, target)
+            total_loss += l2_diff.item()
+            optimizer.zero_grad()
+            l2_diff.backward()
+            optimizer.step()
+        # Loss
+        mean_loss = total_loss / n_batch
+        print(
+            "initialization: expert {} epoch {} loss {:.4f}".format(
+                index, epoch + 1, mean_loss
+            )
+        )
+        if mean_loss < args.min_initialization_loss:
+            print("--------------")
+            break
+
+
 def train_icm(experts, expert_opt, discriminator, discriminator_opt, data, args):
     """Execute the ICM training.
 
@@ -151,7 +223,9 @@ def train_icm(experts, expert_opt, discriminator, discriminator_opt, data, args)
 
         exp_out, exp_score = [], []
         loss_exp_d = 0
-        labels = torch.full((args.batch_size,), 0.0, device=args.device).unsqueeze(dim=1)
+        labels = torch.full((args.batch_size,), 0.0, device=args.device).unsqueeze(
+            dim=1
+        )
         for e in experts:
             out = e(x_tgt)
             # print(out.size())
@@ -165,7 +239,9 @@ def train_icm(experts, expert_opt, discriminator, discriminator_opt, data, args)
         # D discriminator pass
         score = discriminator(x_src)
         # labels.fill_(1)
-        labels = torch.full((args.batch_size,), 1.0, device=args.device).unsqueeze(dim=1)
+        labels = torch.full((args.batch_size,), 1.0, device=args.device).unsqueeze(
+            dim=1
+        )
         total_loss = loss(score, labels.detach()) + loss_exp_d
 
         # combined and back pass for discriminator
@@ -206,8 +282,8 @@ def train_icm(experts, expert_opt, discriminator, discriminator_opt, data, args)
 
 
 def loss_hinge_dis(dis_fake, dis_real):
-    loss_real = torch.mean(F.relu(1. - dis_real))
-    loss_fake = torch.mean(F.relu(1. + dis_fake))
+    loss_real = torch.mean(F.relu(1.0 - dis_real))
+    loss_fake = torch.mean(F.relu(1.0 + dis_fake))
     return loss_real, loss_fake
 
 
@@ -225,12 +301,18 @@ def train_gan(experts, expert_opt, discriminator, discriminator_opt, data, args)
         _, x_tgt = batch
 
         # D
-        noise = torch.Tensor(np.random.normal(size=[args.batch_size, 2]) * args.noise_scale)
+        noise = torch.Tensor(
+            np.random.normal(size=[args.batch_size, 2]) * args.noise_scale
+        )
         out = expert(noise)
         gen_score = discriminator(out)
         real_score = discriminator(x_tgt)
-        gen_label = torch.full((args.batch_size,), 0.0, device=args.device).unsqueeze(dim=1)
-        real_label = torch.full((args.batch_size,), 1.0, device=args.device).unsqueeze(dim=1)
+        gen_label = torch.full((args.batch_size,), 0.0, device=args.device).unsqueeze(
+            dim=1
+        )
+        real_label = torch.full((args.batch_size,), 1.0, device=args.device).unsqueeze(
+            dim=1
+        )
         # d_loss_fake = loss(gen_score, gen_label.detach())
         # d_loss_real = loss(real_score, real_label.detach())
         d_loss_real, d_loss_fake = loss_hinge_dis(gen_score, real_score)
@@ -240,10 +322,14 @@ def train_gan(experts, expert_opt, discriminator, discriminator_opt, data, args)
         discriminator_opt.step()
 
         # G
-        noise = torch.Tensor(np.random.normal(size=[args.batch_size, 2]) * args.noise_scale)
+        noise = torch.Tensor(
+            np.random.normal(size=[args.batch_size, 2]) * args.noise_scale
+        )
         out = expert(noise)
         gen_score = discriminator(out)
-        gen_label = torch.full((args.batch_size,), 1.0, device=args.device).unsqueeze(dim=1)
+        gen_label = torch.full((args.batch_size,), 1.0, device=args.device).unsqueeze(
+            dim=1
+        )
         # gen_loss = loss(gen_score, gen_label.detach())
         gen_loss = loss_hinge_gen(gen_score)
         expert_opt.zero_grad()
@@ -251,7 +337,7 @@ def train_gan(experts, expert_opt, discriminator, discriminator_opt, data, args)
         expert_opt.step()
 
         if idx % args.print_iterval == 0:
-            print('Iteration {}'.format(idx))
+            print("Iteration {}".format(idx))
             print("Discriminator fake Loss: {:.4f}".format(d_loss_fake))
             print("Discriminator real Loss: {:.4f}".format(d_loss_real))
             print("Generator Loss: {:.4f} \n".format(gen_loss))
