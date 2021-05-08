@@ -25,12 +25,22 @@ def difference_loss(input, output, max_diff=50):
     return torch.mean(F.relu(max_diff - torch.sum(diff, axis=[1,2,3])))
 
 
+def mass_preserving_loss(input, output):
+    b, c, w, h = input.shape
+    input_mass = torch.sum(input.reshape((b, -1)), dim=-1)
+    output_mass = torch.sum(output.reshape((b, -1)), dim=-1)
+    diff = input_mass - output_mass
+    return torch.mean(diff**2)
+
+
 class SequenceICM:
 
     def __init__(self, mechanisms, discriminator_data, discriminator_mechanisms, args, smoothing_raidus=0.5, target_diff=50):
         super(SequenceICM, self).__init__()
         self.mechs = mechanisms
-        self.mech_filter = ExpertFilter(args).to(args.device)
+        # self.mech_filter = ExpertFilter(args).to(args.device)
+        self.mech_filter = torch.nn.Identity()
+        self.dummy_filter = nn.Linear(1, 1)
 
         self.d_data = discriminator_data
         self.d_mech = discriminator_mechanisms
@@ -41,12 +51,21 @@ class SequenceICM:
         all_mech_params = []
         for m in self.mechs:
             all_mech_params += list(m.parameters())
-        all_mech_params += list(self.mech_filter.parameters())
+        # all_mech_params += list(self.mech_filter.parameters())
         # print(all_mech_params)
-        self.mech_opt = torch.optim.Adam(
+
+        # Optimizer
+        # self.mech_opt = torch.optim.Adam(
+        #     all_mech_params + list(self.d_mech.parameters())
+        # )
+        self.mech_opt = torch.optim.RMSprop(
             all_mech_params + list(self.d_mech.parameters())
         )
         self.d_opt = torch.optim.Adam(self.d_data.parameters())
+        self.mm_opt = torch.optim.Adam(
+            list(self.dummy_filter.parameters()) + list(self.mech_filter.parameters()),
+            lr=1e-4
+        )
 
         self.target_diff = target_diff
         self.bs = args.batch_size
@@ -80,8 +99,8 @@ class SequenceICM:
             mech_out.append(m(d))
         # compute loss for distribution matching
         mech_out_combined = torch.cat(mech_out, dim=0)
-        # mech_out_combined_f = self.mech_filter(mech_out_combined)
-        mech_out_combined_f = mech_out_combined
+        mech_out_combined_f = self.mech_filter(mech_out_combined)
+        # mech_out_combined_f = mech_out_combined
         if verbose:
             print('mech_out_combined', mech_out_combined.shape)
         d_data_scores = self.d_data(mech_out_combined_f)
@@ -98,7 +117,7 @@ class SequenceICM:
             print('mech_out_combined', mech_out_combined.shape)
 
         data_pairs = torch.cat(
-            (data_mech, mech_out_combined),
+            (self.mech_filter(data_mech), mech_out_combined_f),
             dim=1,
         )
         data_pairs = self.smoother(data_pairs)
@@ -112,13 +131,16 @@ class SequenceICM:
         mech_loss = self.mech_loss_fn(d_mech_logits, d_mech_label)
         # backwards for mechanisms
         diff_loss = difference_loss(data_mech, mech_out_combined, self.target_diff)
+        mass_loss = mass_preserving_loss(data_mech, mech_out_combined)
         # total_loss = data_loss + mech_loss + diff_loss
-        # total_loss = data_loss + 0.1 * mech_loss + diff_loss
-        total_loss = data_loss + 0.1 * mech_loss
+        total_loss = data_loss + 0.1 * mass_loss + mech_loss
+        # total_loss = data_loss
         # total_loss = mech_loss
         self.mech_opt.zero_grad()
+        self.mm_opt.zero_grad()
         total_loss.backward()
         self.mech_opt.step()
+        self.mm_opt.step()
 
         ##################
         # train data discriminator
@@ -129,9 +151,9 @@ class SequenceICM:
             mech_out.append(m(d))
         # compute loss for distribution matching
         mech_out_combined = torch.cat(mech_out, dim=0).detach()
-        # mech_out_combined = self.mech_filter(mech_out_combined).detach()
+        mech_out_combined = self.mech_filter(mech_out_combined)
         fake_scores = self.d_data(mech_out_combined)
-        real_scores = self.d_data(data_disc)
+        real_scores = self.d_data(self.mech_filter(data_disc))
         # real_target = torch.full((self.bs,), 1.0, device=self.device).unsqueeze(dim=1)
         # fake_target = torch.full((self.bs,), 0.0, device=self.device).unsqueeze(dim=1)
         # real_loss = self.data_loss_fn(real_scores, real_target.detach())
@@ -140,8 +162,10 @@ class SequenceICM:
         real_loss, fake_loss = loss_hinge_dis(fake_scores, real_scores)
         total_loss = fake_loss + real_loss
         self.d_opt.zero_grad()
+        self.mm_opt.zero_grad()
         total_loss.backward()
         self.d_opt.step()
+        self.mm_opt.step()
 
         return {
             'fake discriminator loss': fake_loss.detach().item(),
