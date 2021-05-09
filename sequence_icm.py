@@ -133,7 +133,7 @@ class SequenceICM:
         diff_loss = difference_loss(data_mech, mech_out_combined, self.target_diff)
         mass_loss = mass_preserving_loss(data_mech, mech_out_combined)
         # total_loss = data_loss + mech_loss + diff_loss
-        total_loss = data_loss + 0.1 * mass_loss + mech_loss
+        total_loss = data_loss + mech_loss + mass_loss
         # total_loss = data_loss
         # total_loss = mech_loss
         self.mech_opt.zero_grad()

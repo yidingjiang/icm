@@ -144,23 +144,28 @@ class AffineExpert(nn.Module):
     """ """
     def __init__(self, args):
         super(AffineExpert, self).__init__()
+        width = 200
         # self.Sigma = nn.Parameter(torch.eye(3), requires_grad=True)
         # self.Mu = nn.Parameter(torch.zeros(3), requires_grad=True)
-        self.Mu = nn.Parameter(torch.zeros(200), requires_grad=True)
+        self.Mu = nn.Parameter(torch.zeros(width), requires_grad=True)
         # self.Mu2 = nn.Parameter(torch.zeros(3), requires_grad=True)
         # self.Mu2 = nn.Parameter(torch.zeros(3), requires_grad=True)
         self.projection = nn.Sequential(
-            nn.Linear(200, 200),
+            nn.Linear(width, width),
             nn.ReLU(True),
-            nn.Linear(200, 200),
+            nn.Linear(width, 200),
             nn.ReLU(True),
             nn.Linear(200, 3),
         )
-        # self.conv1 = nn.Conv2d(args.input_shape[-1], 32, 3, 1, padding=1)
-        # self.lrelu1 = nn.LeakyReLU()
-        # self.conv2 = nn.Conv2d(32, args.input_shape[-1], kernel_size=3, padding=1)
+        self.conv1 = nn.Conv2d(args.input_shape[-1], 32, 3, 1, padding=1)
+        self.lrelu1 = nn.LeakyReLU()
+        self.conv2 = nn.Conv2d(32, args.input_shape[-1], kernel_size=3, padding=1)
         # self.Mu = nn.Parameter(torch.zeros(3) + torch.randn(3))
         self.sigmoid = nn.Sigmoid()
+        limit = 5
+        rot_limit = 0.2
+        self.minimum = torch.from_numpy(np.array([limit, limit, rot_limit])*-1.).to(args.device)
+        self.maximum = torch.from_numpy(np.array([limit, limit, rot_limit])).to(args.device)
 
     def translateRotate(self, x, mu):
         bs, _, w, h = x.size()
@@ -169,10 +174,14 @@ class AffineExpert(nn.Module):
         # z = torch.tanh(0.1*z)
         # Build affine matrices for random translation of each image
         affineMatrices = torch.zeros(bs,2,3,device=x.device,dtype=x.dtype)
-        affineMatrices[:,0,0] = z[:,2].cos().detach()
-        affineMatrices[:,0,1] = -z[:,2].sin().detach()
-        affineMatrices[:,1,0] = z[:,2].sin().detach()
-        affineMatrices[:,1,1] = z[:,2].cos().detach()
+        # affineMatrices[:,0,0] = z[:,2].cos().detach()
+        # affineMatrices[:,0,1] = -z[:,2].sin().detach()
+        # affineMatrices[:,1,0] = z[:,2].sin().detach()
+        # affineMatrices[:,1,1] = z[:,2].cos().detach()
+        affineMatrices[:,0,0] = z[:,2].cos()
+        affineMatrices[:,0,1] = -z[:,2].sin()
+        affineMatrices[:,1,0] = z[:,2].sin()
+        affineMatrices[:,1,1] = z[:,2].cos()
         affineMatrices[:,:2,2] = z[:,:2]/(.5*w+.5*h)
 
         # affineMatrices[:,:2,2] = z[:,:2]
@@ -189,9 +198,14 @@ class AffineExpert(nn.Module):
         # print(self.Mu)
         # mu = torch.clamp(self.Mu, -0.01, 0.01)
         mu = self.projection(self.Mu)
+        mu = torch.maximum(mu, self.minimum)
+        mu = torch.minimum(mu, self.maximum)
         out = self.translateRotate(x, mu)
         # for _ in range(10):
         #     out = self.translateRotate(out, self.Mu)
+        # out = self.conv1(out)
+        # out = self.lrelu1(out)
+        # out = self.sigmoid(self.conv2(out))
         return out
         # out_max = torch.amax(x, dim=(1, 2, 3), keepdim=True).detach()
         # print(self.Mu)
